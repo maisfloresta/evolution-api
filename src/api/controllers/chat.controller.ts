@@ -121,5 +121,8 @@ export class ChatController {
       remoteJid: data.remoteJid,
     };
     return await this.waMonitor.waInstances[instanceName].baileysDecryptPollVote(pollCreationMessageKey);
+ 
+  public async fetchChannels({ instanceName }: InstanceDto, query: Query<Contact>) {
+    return await this.waMonitor.waInstances[instanceName].fetchChannels(query);
   }
 }

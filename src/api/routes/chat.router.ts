@@ -290,6 +290,12 @@ export class ChatRouter extends RouterBroker {
           schema: decryptPollVoteSchema,
           ClassRef: DecryptPollVoteDto,
           execute: (instance, data) => chatController.decryptPollVote(instance, data),
+      .post(this.routerPath('findChannels'), ...guards, async (req, res) => {
+        const response = await this.dataValidate({
+          request: req,
+          schema: contactValidateSchema,
+          ClassRef: Query<Contact>,
+          execute: (instance, query) => chatController.fetchChannels(instance, query as any),
         });
 
         return res.status(HttpStatus.OK).json(response);
