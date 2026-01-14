@@ -648,7 +648,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
     const error = baileysVersion?.error ?? null;
     if (error) {
-      this.logger.error(`Fetch latest WaWeb version error: ${error.message}`);
+      this.logger.error(`Fetch latest WaWeb version error: ${JSON.stringify({ error })}`);
     }
 
     this.logger.info(`Group Ignore: ${this.localSettings.groupsIgnore}`);
