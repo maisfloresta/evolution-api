@@ -3310,53 +3310,121 @@ export class BaileysStartupService extends ChannelStartupService {
     ['random', 'EVP'],
   ]);
 
-  aqui?
-
-public async buttonMessage(data: SendButtonsDto) {
-  if (!data.buttons || data.buttons.length === 0) {
-    throw new BadRequestException('At least one button is required');
-  }
-
-  const hasReplyButtons = data.buttons.some((btn) => btn.type === 'reply');
-  const hasPixButton = data.buttons.some((btn) => btn.type === 'pix');
-  const hasCTAButtons = data.buttons.some(
-    (btn) => btn.type === 'url' || btn.type === 'call' || btn.type === 'copy',
-  );
-
-  /* =========================
-   * REGRAS DE VALIDAÇÃO
-   * ========================= */
-
-  // Reply
-  if (hasReplyButtons) {
-    if (data.buttons.length > 3) {
-      throw new BadRequestException('Maximum of 3 reply buttons allowed');
+  public async buttonMessage(data: SendButtonsDto) {
+    if (!data.buttons || data.buttons.length === 0) {
+      throw new BadRequestException('At least one button is required');
     }
-    if (hasCTAButtons || hasPixButton) {
-      throw new BadRequestException('Reply buttons cannot be mixed with CTA or PIX buttons');
-    }
-  }
 
-  // PIX
-  if (hasPixButton) {
-    if (data.buttons.length > 1) {
-      throw new BadRequestException('Only one PIX button is allowed');
+    const hasReplyButtons = data.buttons.some((btn) => btn.type === 'reply');
+    const hasPixButton = data.buttons.some((btn) => btn.type === 'pix');
+    const hasCTAButtons = data.buttons.some((btn) => btn.type === 'url' || btn.type === 'call' || btn.type === 'copy');
+
+    /* =========================
+     * REGRAS DE VALIDAÇÃO
+     * ========================= */
+
+    // Reply
+    if (hasReplyButtons) {
+      if (data.buttons.length > 3) {
+        throw new BadRequestException('Maximum of 3 reply buttons allowed');
+      }
+      if (hasCTAButtons || hasPixButton) {
+        throw new BadRequestException('Reply buttons cannot be mixed with CTA or PIX buttons');
+      }
     }
-    if (hasReplyButtons || hasCTAButtons) {
-      throw new BadRequestException('PIX button cannot be mixed with other button types');
+
+    // PIX
+    if (hasPixButton) {
+      if (data.buttons.length > 1) {
+        throw new BadRequestException('Only one PIX button is allowed');
+      }
+      if (hasReplyButtons || hasCTAButtons) {
+        throw new BadRequestException('PIX button cannot be mixed with other button types');
+      }
+
+      const message: proto.IMessage = {
+        viewOnceMessage: {
+          message: {
+            interactiveMessage: {
+              nativeFlowMessage: {
+                buttons: [
+                  {
+                    name: this.mapType.get('pix'),
+                    buttonParamsJson: this.toJSONString(data.buttons[0]),
+                  },
+                ],
+                messageParamsJson: JSON.stringify({
+                  from: 'api',
+                  templateId: v4(),
+                }),
+              },
+            },
+          },
+        },
+      };
+
+      return await this.sendMessageWithTyping(data.number, message, {
+        delay: data?.delay,
+        presence: 'composing',
+        quoted: data?.quoted,
+        mentionsEveryOne: data?.mentionsEveryOne,
+        mentioned: data?.mentioned,
+      });
     }
+
+    // CTA (url / call / copy)
+    if (hasCTAButtons) {
+      if (data.buttons.length > 2) {
+        throw new BadRequestException('Maximum of 2 CTA buttons allowed');
+      }
+      if (hasReplyButtons) {
+        throw new BadRequestException('CTA buttons cannot be mixed with reply buttons');
+      }
+    }
+
+    /* =========================
+     * HEADER (opcional)
+     * ========================= */
+
+    const generatedMedia = data?.thumbnailUrl
+      ? await this.prepareMediaMessage({ mediatype: 'image', media: data.thumbnailUrl })
+      : null;
+
+    /* =========================
+     * BOTÕES
+     * ========================= */
+
+    const buttons = data.buttons.map((btn) => ({
+      name: this.mapType.get(btn.type),
+      buttonParamsJson: this.toJSONString(btn),
+    }));
+
+    /* =========================
+     * MENSAGEM FINAL
+     * ========================= */
 
     const message: proto.IMessage = {
       viewOnceMessage: {
         message: {
           interactiveMessage: {
+            body: {
+              text: (() => {
+                let text = `*${data.title}*`;
+                if (data?.description) {
+                  text += `\n\n${data.description}`;
+                }
+                return text;
+              })(),
+            },
+            footer: data?.footer ? { text: data.footer } : undefined,
+            header: generatedMedia?.message?.imageMessage
+              ? {
+                  hasMediaAttachment: true,
+                  imageMessage: generatedMedia.message.imageMessage,
+                }
+              : undefined,
             nativeFlowMessage: {
-              buttons: [
-                {
-                  name: this.mapType.get('pix'),
-                  buttonParamsJson: this.toJSONString(data.buttons[0]),
-                },
-              ],
+              buttons,
               messageParamsJson: JSON.stringify({
                 from: 'api',
                 templateId: v4(),
@@ -3375,78 +3443,6 @@ public async buttonMessage(data: SendButtonsDto) {
       mentioned: data?.mentioned,
     });
   }
-
-  // CTA (url / call / copy)
-  if (hasCTAButtons) {
-    if (data.buttons.length > 2) {
-      throw new BadRequestException('Maximum of 2 CTA buttons allowed');
-    }
-    if (hasReplyButtons) {
-      throw new BadRequestException('CTA buttons cannot be mixed with reply buttons');
-    }
-  }
-
-  /* =========================
-   * HEADER (opcional)
-   * ========================= */
-
-  const generatedMedia = data?.thumbnailUrl
-    ? await this.prepareMediaMessage({ mediatype: 'image', media: data.thumbnailUrl })
-    : null;
-
-  /* =========================
-   * BOTÕES
-   * ========================= */
-
-  const buttons = data.buttons.map((btn) => ({
-    name: this.mapType.get(btn.type),
-    buttonParamsJson: this.toJSONString(btn),
-  }));
-
-  /* =========================
-   * MENSAGEM FINAL
-   * ========================= */
-
-  const message: proto.IMessage = {
-    viewOnceMessage: {
-      message: {
-        interactiveMessage: {
-          body: {
-            text: (() => {
-              let text = `*${data.title}*`;
-              if (data?.description) {
-                text += `\n\n${data.description}`;
-              }
-              return text;
-            })(),
-          },
-          footer: data?.footer ? { text: data.footer } : undefined,
-          header: generatedMedia?.message?.imageMessage
-            ? {
-                hasMediaAttachment: true,
-                imageMessage: generatedMedia.message.imageMessage,
-              }
-            : undefined,
-          nativeFlowMessage: {
-            buttons,
-            messageParamsJson: JSON.stringify({
-              from: 'api',
-              templateId: v4(),
-            }),
-          },
-        },
-      },
-    },
-  };
-
-  return await this.sendMessageWithTyping(data.number, message, {
-    delay: data?.delay,
-    presence: 'composing',
-    quoted: data?.quoted,
-    mentionsEveryOne: data?.mentionsEveryOne,
-    mentioned: data?.mentioned,
-  });
-}
 
   public async locationMessage(data: SendLocationDto) {
     return await this.sendMessageWithTyping(
