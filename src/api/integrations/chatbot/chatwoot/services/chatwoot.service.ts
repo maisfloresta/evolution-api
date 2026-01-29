@@ -947,20 +947,39 @@ export class ChatwootService {
 
     const sourceReplyId = quotedMsg?.chatwootMessageId || null;
 
+    // Filtra valores null/undefined do content_attributes para evitar erro 406
+    const filteredReplyToIds = Object.fromEntries(
+      Object.entries(replyToIds).filter(([_, value]) => value != null)
+    );
+
+    // Monta o objeto data, incluindo content_attributes apenas se houver dados válidos
+    const messageData: any = {
+      content: content,
+      message_type: messageType,
+      content_type: 'text', // Explicitamente define como texto para Chatwoot 4.x
+      attachments: attachments,
+      private: privateMessage || false,
+    };
+
+    // Adiciona source_id apenas se existir
+    if (sourceId) {
+      messageData.source_id = sourceId;
+    }
+
+    // Adiciona content_attributes apenas se houver dados válidos
+    if (Object.keys(filteredReplyToIds).length > 0) {
+      messageData.content_attributes = filteredReplyToIds;
+    }
+
+    // Adiciona source_reply_id apenas se existir
+    if (sourceReplyId) {
+      messageData.source_reply_id = sourceReplyId.toString();
+    }
+
     const message = await client.messages.create({
       accountId: this.provider.accountId,
       conversationId: conversationId,
-      data: {
-        content: content,
-        message_type: messageType,
-        attachments: attachments,
-        private: privateMessage || false,
-        source_id: sourceId,
-        content_attributes: {
-          ...replyToIds,
-        },
-        source_reply_id: sourceReplyId ? sourceReplyId.toString() : null,
-      },
+      data: messageData,
     });
 
     if (!message) {
@@ -1086,11 +1105,14 @@ export class ChatwootService {
     if (messageBody && instance) {
       const replyToIds = await this.getReplyToIds(messageBody, instance);
 
-      if (replyToIds.in_reply_to || replyToIds.in_reply_to_external_id) {
-        const content = JSON.stringify({
-          ...replyToIds,
-        });
-        data.append('content_attributes', content);
+      // Filtra valores null/undefined antes de enviar
+      const filteredReplyToIds = Object.fromEntries(
+        Object.entries(replyToIds).filter(([_, value]) => value != null)
+      );
+
+      if (Object.keys(filteredReplyToIds).length > 0) {
+        const contentAttrs = JSON.stringify(filteredReplyToIds);
+        data.append('content_attributes', contentAttrs);
       }
     }
 
