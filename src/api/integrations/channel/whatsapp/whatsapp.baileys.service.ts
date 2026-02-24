@@ -138,6 +138,7 @@ import { createHash } from 'crypto';
 import EventEmitter2 from 'eventemitter2';
 import ffmpeg from 'fluent-ffmpeg';
 import FormData from 'form-data';
+import { getLinkPreview } from 'link-preview-js';
 import Long from 'long';
 import mimeTypes from 'mime-types';
 import NodeCache from 'node-cache';
@@ -434,7 +435,7 @@ export class BaileysStartupService extends ChannelStartupService {
       qrcodeTerminal.generate(qr, { small: true }, (qrcode) =>
         this.logger.log(
           `\n{ instance: ${this.instance.name} pairingCode: ${this.instance.qrcode.pairingCode}, qrcodeCount: ${this.instance.qrcode.count} }\n` +
-            qrcode,
+          qrcode,
         ),
       );
 
@@ -1052,16 +1053,16 @@ export class BaileysStartupService extends ChannelStartupService {
 
         const messagesRepository: Set<string> = new Set(
           chatwootImport.getRepositoryMessagesCache(instance) ??
-            (
-              await this.prismaRepository.message.findMany({
-                select: { key: true },
-                where: { instanceId: this.instanceId },
-              })
-            ).map((message) => {
-              const key = message.key as { id: string };
+          (
+            await this.prismaRepository.message.findMany({
+              select: { key: true },
+              where: { instanceId: this.instanceId },
+            })
+          ).map((message) => {
+            const key = message.key as { id: string };
 
-              return key.id;
-            }),
+            return key.id;
+          }),
         );
 
         if (chatwootImport.getRepositoryMessagesCache(instance) === null) {
@@ -2220,6 +2221,46 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
+  private async generateLinkPreview(text: string) {
+    try {
+      const linkRegex = /https?:\/\/[^\s]+/;
+      const match = text.match(linkRegex);
+
+      if (!match) return undefined;
+
+      // Trim common trailing punctuation that may follow URLs in natural text
+      const url = match[0].replace(/[.,);\]]+$/u, '');
+      if (!url) return undefined;
+
+      const previewData = await getLinkPreview(url, {
+        imagesPropertyType: 'og', // fetches only open-graph images
+        headers: {
+          'user-agent': 'googlebot', // fetches with googlebot to prevent login pages
+        },
+      }) as any;
+
+      if (!previewData || !previewData.title) return undefined;
+
+      const image = previewData.images && previewData.images.length > 0 ? previewData.images[0] : undefined;
+
+      return {
+        externalAdReply: {
+          title: previewData.title,
+          body: previewData.description,
+          mediaType: 2, // 2 for video/image preview, though usually 1 is for thumbnail
+          thumbnailUrl: image,
+          sourceUrl: url,
+          mediaUrl: url,
+          renderLargerThumbnail: true
+          // showAdAttribution: true // Removed to prevent "Sent via ad" label
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Error generating link preview: ${error}`);
+      return undefined;
+    }
+  }
+
   private async sendMessage(
     sender: string,
     message: any,
@@ -2431,7 +2472,12 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
 
-      const linkPreview = options?.linkPreview != false ? undefined : false;
+      const linkPreview = options?.linkPreview === false ? false : undefined;
+
+      let previewContext: any = undefined;
+      if (linkPreview !== false && (message as any)?.conversation) {
+        previewContext = await this.generateLinkPreview((message as any).conversation);
+      }
 
       let quoted: WAMessage;
 
@@ -2485,6 +2531,7 @@ export class BaileysStartupService extends ChannelStartupService {
           quoted,
           null,
           group?.ephemeralDuration,
+          previewContext,
           // group?.participants,
         );
       } else {
@@ -2498,6 +2545,7 @@ export class BaileysStartupService extends ChannelStartupService {
             unsigned: false,
           },
           disappearingMode: { initiator: 0 },
+          ...previewContext,
         };
         messageSent = await this.sendMessage(
           sender,
