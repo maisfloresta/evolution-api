@@ -989,14 +989,6 @@ export class BaileysStartupService extends ChannelStartupService {
       progress?: number;
       syncType?: proto.HistorySync.HistorySyncType;
     }) => {
-      //These logs are crucial; when something changes in Baileys/WhatsApp, we can more easily understand what changed!
-      this.logger.debug('Messages abaixo');
-      this.logger.debug(messages);
-      this.logger.debug('Chats abaixo');
-      this.logger.debug(chats);
-      this.logger.debug('Contatos abaixo');
-      this.logger.debug(contacts);
-
       try {
         if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
           console.log('received on-demand history sync, messages=', messages);
