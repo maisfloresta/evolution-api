@@ -1,0 +1,79 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: debf601b735884749077c90bb75a995c2a1588535b3654e9
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution_internal
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - evolution_redis_data:/data
+    networks:
+      - evolution_internal
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  api:
+    image: evoapicloud/evolution-api:latest
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: "8080"
+      SERVER_URL: https://evo.maisfloresta.cloud
+      SERVER_DISABLE_MANAGER: "false"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:debf601b735884749077c90bb75a995c2a1588535b3654e9@evolution_postgres:5432/evolution?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_maisfloresta
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution_redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      AUTHENTICATION_API_KEY: 9f140b085767d9fbc2e79366037e4b0385a80bada1dbb07e
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      LANGUAGE: pt-BR
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution_internal
+      - easypanel
+    deploy:
+      restart_policy:
+        condition: on-failure
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=easypanel
+        - traefik.http.routers.evolution-http.rule=Host(`evo.maisfloresta.cloud`) && PathPrefix(`/`)
+        - traefik.http.routers.evolution-http.entrypoints=http
+        - traefik.http.routers.evolution-http.priority=100
+        - traefik.http.routers.evolution-http.middlewares=redirect-to-https@file,bad-gateway-error-page@file
+        - traefik.http.routers.evolution-http.service=evolution-api-svc
+        - traefik.http.routers.evolution-https.rule=Host(`evo.maisfloresta.cloud`) && PathPrefix(`/`)
+        - traefik.http.routers.evolution-https.entrypoints=https
+        - traefik.http.routers.evolution-https.priority=100
+        - traefik.http.routers.evolution-https.tls=true
+        - traefik.http.routers.evolution-https.tls.certresolver=letsencrypt
+        - traefik.http.routers.evolution-https.middlewares=bad-gateway-error-page@file
+        - traefik.http.routers.evolution-https.service=evolution-api-svc
+        - traefik.http.services.evolution-api-svc.loadbalancer.server.port=8080
+
+volumes:
+  evolution_postgres_data:
+  evolution_redis_data:
+  evolution_instances:
+
+networks:
+  evolution_internal:
+    driver: overlay
+  easypanel:
+    external: true

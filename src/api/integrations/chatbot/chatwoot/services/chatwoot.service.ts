@@ -1459,7 +1459,7 @@ export class ChatwootService {
             ? this.provider.signDelimiter.replaceAll('\\n', '\n')
             : '\n';
           const textToConcat = this.provider.signMsg ? [`*${senderName}:*`] : [];
-          textToConcat.push(messageReceived);
+          textToConcat.push(messageReceived.trim());
 
           formatText = textToConcat.join(formattedDelimiter);
         }
